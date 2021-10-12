@@ -1,0 +1,473 @@
+---
+title: "Final Project"
+author: "Jiner Zheng"
+date: "12/9/2019"
+output:
+  html_document: default
+  word_document: default
+---
+
+### Data Management and Preparation
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(magrittr)
+library(qwraps2)
+library(haven)
+library(ggplot2)
+library(tableone)
+library(Matching)
+MGM_AER_P_P <- read_dta("~/Documents/R Projects/qac 307/MGM_AER_P-P.dta")
+peer_tutoring <- MGM_AER_P_P[,c(1:17,97:100)]
+peer_tutoring$dfgpa <- (peer_tutoring$fgrdnum - peer_tutoring$ptermcumgpa)/peer_tutoring$ptermcumgpa 
+
+our_summary1 <-
+  list("Hours Tutored" =
+         list("min" = ~ min(.data$tuthours),
+              "max" = ~ max(.data$tuthours),
+              "mean (sd)" = ~ qwraps2::mean_sd(.data$tuthours)),
+       "Term Credit Hours Earned" =
+         list("min" = ~ min(.data$termcred),
+              "median" = ~ median(.data$termcred),
+              "max" = ~ max(.data$termcred),
+              "mean (sd)" = ~ qwraps2::mean_sd(.data$termcred)),
+       "Final Grade on 4.0 scale" =
+         list("min" = ~ min(.data$fgrdnum),
+              "median" = ~ median(.data$fgrdnum),
+              "max" = ~ max(.data$fgrdnum),
+              "mean (sd)" = ~ qwraps2::mean_sd(.data$fgrdnum)),
+       "Previous Term Cumulative GPA" =
+         list("min" = ~ min(.data$ptermcumgpa),
+              "max" = ~ max(.data$ptermcumgpa),
+              "median" = ~ median(.data$ptermcumgpa),
+              "mean (sd)" = ~qwraps2::mean_sd(.data$ptermcumgpa)),
+       "Change in GPA compared to Previous Term" =
+         list("min" = ~min(.data$dfgpa),
+              "max" = ~max(.data$dfgpa),
+              "median" = ~median(.data$dfgpa),
+              "mean (sd)" = ~qwraps2::mean_sd(.data$dfgpa)),
+       "SAT math" =
+         list("min" = ~ min(.data$admsatm),
+              "max" = ~ max(.data$admsatm),
+              "mean (sd)" = ~ qwraps2::mean_sd(.data$admsatm)),
+       "High School Rank Index" =
+         list("min" = ~ min(.data$admri),
+              "max" = ~ max(.data$admri),
+              "mean (sd)" = ~ qwraps2::mean_sd(.data$admri)))
+
+demo_summary1 <-
+   list("Demographics" = 
+          list(
+            "Varisity Athlete" = ~ qwraps2::n_perc0(.data$athpart == 1),
+            "Female" = ~ qwraps2::n_perc0(.data$demgender == 0),
+            "Male"  = ~ qwraps2::n_perc0(.data$demgender == 1),
+            "African American" = ~ qwraps2::n_perc0(.data$demafam == 1),
+            "Hispanic" = ~qwraps2::n_perc0(.data$demhis == 1),
+            "Greek Participant" = ~qwraps2::n_perc0(.data$demgrkpart == 1),
+            "Freshman" = ~qwraps2::n_perc0(.data$acafr == 1),
+            "Sophoremore" = ~qwraps2::n_perc0(.data$acaso == 1)),
+        "Courses Characteristics"=
+          list(
+            "Recitation Course" = ~qwraps2::n_perc0(.data$acarec == 1),
+            "Lab Course"=~qwraps2::n_perc0(.data$acalab == 1),
+            "2004-05"=~qwraps2::n_perc0(.data$y1 == 1),
+            "2005-06"=~qwraps2::n_perc0(.data$y2 == 1)))
+
+orig_opt <- options()$qwraps2_markup
+options(qwraps2_markup = "markdown")
+peer_tutoring$tutpart_factor <- peer_tutoring$tutpart
+whole <- summary_table(peer_tutoring, our_summary1)
+by_tutor <- summary_table(dplyr::group_by(peer_tutoring, tutpart_factor), our_summary1)
+bind <- cbind(whole, by_tutor)
+whole2 <- summary_table(peer_tutoring, demo_summary1)
+by_tutor2 <- summary_table(dplyr::group_by(peer_tutoring,tutpart_factor), demo_summary1)
+bind2 <- cbind(whole2,by_tutor2)
+```
+
+##### regression model (just a glimpse)
+
+```{r}
+mod <- lm(dfgpa~tutpart, data = peer_tutoring)
+summary(mod)
+```
+
+
+### Summary statistics 
+
+##### Academic Performance
+```{r}
+print(bind,
+      rtitle = "Summary Statistics of Academic Performance",
+      cnames = c("Total", "Not Tutored", "Tutored"))
+```
+
+##### Demographics / Courses Characteristics
+```{r}
+print(bind2,
+      rtitle = "Summary Statistics of Demographics and Courses Characteristics",
+      cnames = c("Total", "Not Tutored", "Tutored"))
+```
+
+
+
+### General Visualizations
+
+#### Univariate graph of percentage change in final grade
+
+```{r}
+peer_tutoring %>%
+  ggplot(aes(x=dfgpa))+
+  geom_density(color="maroon3")+
+  theme_minimal()+
+  xlab("Percentage change in final grade")+
+  ggtitle("Distribution of percentage change in final grade")
+```
+
+#### Bivariate graph of final grade based on tutoring
+
+
+Bivariate graph of Percentage Change in final grade 
+
+```{r}
+peer_tutoring %>%
+  ggplot(aes(y=dfgpa, x=as.factor(tutpart), fill=as.factor(tutpart)))+
+  geom_boxplot(alpha=0.8)+
+  theme_minimal()+
+  ylab("Proportion of Change in final grade based on Previous Term GPA ")+
+  xlab("Tutoring Participant")+
+  scale_fill_manual("Tutoring Participant",
+                     labels=c("Not Tutored","Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))
+```
+
+##### boxplot of final grade based on tutoring
+
+```{r}
+peer_tutoring %>%
+  ggplot(aes(y=fgrdnum, x=as.factor(tutpart), fill=as.factor(tutpart)))+
+  geom_boxplot(alpha=0.8)+
+  theme_minimal()+
+  ylab("Final grade on 4.0 scale")+
+  xlab("Tutoring Participant")+
+  scale_fill_manual("Tutoring Participant",
+                     labels=c("Tutored","Not Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("Distribution of final grade based on tutoring")
+```
+
+##### bivariate graph of final grade with tutoring hours within participants in the tutoring program
+
+```{r}
+tutored <- peer_tutoring[peer_tutoring$tutpart == 1,]
+tutored %>%
+  ggplot(aes(x=tuthours,y=fgrdnum))+
+  geom_point(color="cornflowerblue", 
+             size = 2, 
+             alpha = .6) +
+  geom_smooth(method = "lm",
+              size = 1.5,
+              color = "slateblue1")+
+  xlab("The number of hours being tutored")+
+  ylab("Final Grade on 4.0 Scale")+
+  theme_minimal()
+```
+
+
+
+
+##### Mirror density plot representing the distribution of previous term culumative gpa (on the bottom) and the distribution of final grade 
+
+```{r}
+ggplot(peer_tutoring,aes(x=x)) +
+  # Top
+  geom_density( aes(x = fgrdnum,y=..density..), fill="#69b3a2" ) +
+  geom_label( aes(x=0.5, y=0.25, label="Final Grade"), color="#69b3a2") +
+  # Bottom
+  geom_density( aes(x = ptermcumgpa,y=-..density..), fill= "#404080") +
+  geom_label( aes(x=0.5, y=-0.25, label="Previous GPA"), color="#404080") +
+  theme_minimal() +
+  xlab("Grade on a 4.0 Scale")
+```
+
+
+### Visualizations based on treatment.
+
+##### Previous Term GPA
+```{r}
+peer_tutoring %>%
+  ggplot(aes(x=ptermcumgpa, group=as.factor(tutpart), color=as.factor(tutpart)))+
+  geom_density()+
+  theme_minimal()+
+  xlab("Previous Term Cumulative GPA")+
+  scale_color_manual("Tutoring Participant",
+                     labels=c("Tutored","Not Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("")
+```
+
+##### SAT-math
+```{r}
+peer_tutoring %>%
+  ggplot(aes(x=admsatm, group=as.factor(tutpart), color=as.factor(tutpart)))+
+  geom_density()+
+  theme_minimal()+
+  xlab("SAT-math")+
+  scale_color_manual("Tutoring Participant",
+                     labels=c("Tutored","Not Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("")
+```
+
+##### High school rank index
+```{r}
+peer_tutoring %>%
+  ggplot(aes(x=admri, group=as.factor(tutpart), color=as.factor(tutpart)))+
+  geom_density()+
+  theme_minimal()+
+  xlab("High School Rank Index")+
+  scale_color_manual("Tutoring Participant",
+                     labels=c("Tutored","Not Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("")
+```
+
+##### Varsity Athlete
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=athpart),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion of Varsity Athletes within each tutored group")+
+  theme_minimal()
+```
+
+##### African-American
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=demafam),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion African American within each tutored group")+
+  theme_minimal()
+```
+
+##### Hispanic
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=demhis),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Hispanic within each tutored group")+
+  theme_minimal()
+```
+
+##### Male
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=demgender),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Male within each tutored group")+
+  theme_minimal()
+```
+
+##### Greek Participant
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=demgrkpart),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Greek Participant within each tutored group")+
+  theme_minimal()
+```
+
+##### Freshman
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=acafr),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Freshman within each tutored group")+
+  theme_minimal()
+```
+
+##### Sophomore 
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=acaso),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Sophoremore within each tutored group")+
+  theme_minimal()
+```
+
+##### Recitation Courses
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=acarec),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Enrolled in Recitation Courses within each tutored group")+
+  theme_minimal()
+```
+
+##### Lab courses
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=acalab),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Enrolled in lab courses within each tutored group")+
+  theme_minimal()
+```
+
+##### 2004-05
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=y1),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Enrolled in courses in 2004-06 within each tutored group")+
+  theme_minimal()
+```
+
+##### 2005-06
+
+```{r}
+ggplot(data=peer_tutoring)+
+  stat_summary(aes(x=factor(tutpart), y=y2),
+               fun.y="mean", 
+               geom="bar", 
+               fill="purple3", 
+               alpha=0.5, width=0.5)+
+  xlab("Tutoring Participant")+
+  ylab("Proportion Enrolled in courses in 2005-06 within each tutored group")+
+  theme_minimal()
+```
+
+
+### Perform Matching
+```{r}
+mydata <- 
+  peer_tutoring %>%
+  dplyr::select(-c("tuthourssq","tuthourscu"))
+
+psmodel <- glm(tutpart~admsatm+admri+termcred+athpart+demafam+demhis+demgender+demgrkpart+acafr+acaso+ptermcumgpa+acalab+acarec+y1+y2,family=binomial(), data=mydata)
+
+summary(psmodel)
+```
+
+##### Propensity Scores before matching
+```{r}
+pscore <- psmodel$fitted.values
+
+ggplot(mydata)+
+geom_density(aes(x=pscore, color=factor(tutpart)))+
+  xlab("Propensity Score")+
+  scale_color_manual("Tutoring Participant",
+                     labels=c("Not Tutored","Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("Pre-Matched Propensity Scores by Tutoring")+
+  theme_minimal()
+```
+
+##### Table before matching
+
+```{r}
+xvars <- c("admsatm","admri","termcred","athpart","demafam","demhis","demgender","demgrkpart","acafr","acaso","ptermcumgpa","acarec","acalab","y1","y2")
+#look at a table 1
+table1<- CreateTableOne(vars=xvars,strata="tutpart", data=mydata, test=FALSE)
+## include standardized mean difference (SMD)
+print(table1,smd=TRUE)
+```
+
+##### Perform greedy matching on propensity score
+
+```{r}
+#do greedy matching on propensity score using Match with a caliper
+psmatch<-Match(Tr=mydata$tutpart,M=1,X=pscore,replace=FALSE,caliper=.2*sd(pscore))
+matched<-mydata[unlist(psmatch[c("index.treated","index.control")]), ]
+#get standardized differences
+matchedtab1<-CreateTableOne(vars=xvars, strata ="tutpart",
+data=matched, test = FALSE)
+print(matchedtab1, smd = TRUE)
+```
+##### Propensity Scores after matching
+```{r}
+psmodel2 <- glm(tutpart~admsatm+admri+termcred+athpart+demafam+demhis+demgender+demgrkpart+acafr+acaso+ptermcumgpa+acalab+acarec+y1+y2,family=binomial(), data=matched)
+pscore2 <- psmodel2$fitted.values
+
+ggplot(matched)+
+geom_density(aes(x=pscore2, color=factor(tutpart)))+
+  xlab("Propensity Score")+
+  scale_color_manual("Tutoring Participant",
+                     labels=c("Not Tutored","Tutored"),
+                     values=c("mediumpurple3","palevioletred2"))+
+  ggtitle("After-Matched Propensity Scores by Tutoring")+
+  theme_minimal()
+```
+
+
+##### Paired wise t-test
+
+```{r}
+y_trt<-matched$dfgpa[matched$tutpart==1]
+y_con<-matched$dfgpa[matched$tutpart==0]
+t.test(y_trt, y_con, paired=TRUE)
+
+```
+
+
+
+### Sub-analysis examining the asscoiation between tutored hours and changes in final grade within participants who were tutored
+
+```{r,message=FALSE, warning=FALSE}
+tutored <- 
+  peer_tutoring %>%
+  filter(tutpart == 1)
+
+#before controlling for other covariates
+model2 <- lm(dfgpa~tuthours,data = tutored)
+
+#after controlling for covariates
+model3 <- lm(dfgpa~tuthours+admsatm+admri+termcred+athpart+demafam+demhis+demgender+demgrkpart+acafr+acaso+ptermcumgpa+acalab+acarec, data = tutored)
+summary(model2)
+summary(model3)
+```
+
